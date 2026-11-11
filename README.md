@@ -10,23 +10,7 @@ DynamoDB ledger of committed refunds, classifies the outcome, and publishes dupl
 side effects and false claims as CloudWatch metrics. A CloudWatch alarm on refunded
 dollars acts as the FIS stop condition.
 
-```
- Local harness                         AWS
- +------------------+   Converse    +----------------+
- | agent.py         |-------------->| Amazon Bedrock |
- |   tool loop      |               +----------------+
- |                  |   Invoke      +-----------------------+  PutItem  +-------------+
- |                  |-------------->| issue_refund (Lambda) |---------->| refunds     |
- |                  |               |  + FIS extension      |           | (ledger)    |
- |                  |-------------->| get_order (Lambda)    |<----------| orders      |
- | checker.py       |               +-----------^-----------+           +-------------+
- |   claim vs ledger|--> CloudWatch metrics     | polls fault config
- +------------------+         |                 |
-                              v           +-----+---------+       +----------------+
-                     stop-condition ----->| FIS           |------>| S3 FisConfigs/ |
-                     alarm                | experiments   |       +----------------+
-                                          +---------------+
-```
+![Architecture: a local harness calls Amazon Bedrock and two Lambda tools; AWS FIS injects faults into issue_refund through an S3 configuration prefix; a checker compares the agent's claim with a DynamoDB ledger and publishes CloudWatch metrics that drive the FIS stop condition](docs/architecture.png)
 
 ## Faults
 
