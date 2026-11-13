@@ -8,11 +8,11 @@ Contracts (what the agent is given):
   v1  naive: no idempotency key, raw error text on failure.
   v2  the tool schema requires an idempotency_key the MODEL chooses, and tool
       failures come back as structured errors that say the commit status is unknown.
-  v3  same as v2, but the HARNESS attaches a deterministic key, so the model
-      cannot forget it or invent a new one on retry.
+  v3  same as v2, but the HARNESS attaches the key: one refund-request ID per
+      logical refund, created when the request arrives and reused on every retry,
+      so the model cannot forget it or invent a new one.
 """
 
-import hashlib
 import json
 import time
 import uuid
@@ -132,9 +132,17 @@ def _present_tool_result(contract, result):
     }, "error"
 
 
-def run_episode(*, bedrock, model_id, tools, contract, order_id, amount, max_turns=10, log=None):
-    """Run one conversation. Returns the agent's claim plus a trace of every tool call."""
-    episode_key = hashlib.sha256(f"{order_id}:{amount}".encode()).hexdigest()[:16]
+def new_refund_request_id():
+    """One ID per logical refund request. Retries of that request reuse it; a second,
+    separate refund (even for the same order and amount) gets a new one."""
+    return f"rq-{uuid.uuid4().hex}"
+
+
+def run_episode(*, bedrock, model_id, tools, contract, order_id, amount, max_turns=10, log=None,
+                refund_request_id=None):
+    """Run one conversation (one customer refund request). Returns the agent's claim
+    plus a trace of every tool call."""
+    refund_request_id = refund_request_id or new_refund_request_id()
     messages = [{"role": "user", "content": [{"text": (
         f"Hi, my order {order_id} arrived broken. Please refund the full ${amount:.2f}."
     )}]}]
@@ -171,7 +179,7 @@ def run_episode(*, bedrock, model_id, tools, contract, order_id, amount, max_tur
             else:
                 payload = dict(args)
                 if name == "issue_refund" and contract == "v3":
-                    payload["idempotency_key"] = f"k-{episode_key}"
+                    payload["idempotency_key"] = refund_request_id
                 if name == "issue_refund" and contract == "v1":
                     payload.pop("idempotency_key", None)
                 fn = tools.refund_fn if name == "issue_refund" else tools.order_fn
@@ -188,7 +196,8 @@ def run_episode(*, bedrock, model_id, tools, contract, order_id, amount, max_tur
         if claim is not None:
             break
 
-    return {"claim": claim, "trace": trace, "usage": usage, "turns": len(trace)}
+    return {"claim": claim, "trace": trace, "usage": usage, "turns": len(trace),
+            "refund_request_id": refund_request_id}
 
 
 def new_order_id():

@@ -130,7 +130,8 @@ def main():
                                      "contract": args.contract, "model": args.model,
                                      "read_timeout": args.read_timeout, "sdk_attempts": args.sdk_attempts,
                                      **verdict, "claim": ep["claim"], "trace": ep["trace"],
-                                     "usage": ep["usage"]}, default=str) + "\n")
+                                     "usage": ep["usage"],
+                                     "refund_request_id": ep["refund_request_id"]}, default=str) + "\n")
     finally:
         if exp_id:
             state = fis.get_experiment(id=exp_id)["experiment"]["state"]
